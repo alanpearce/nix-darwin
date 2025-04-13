@@ -22,6 +22,17 @@ in
       description = "The package to use for tailscale";
     };
 
+    useIPv6 = mkOption {
+      type = types.bool;
+      default = false;
+      example = true;
+      description = ''
+        This option sets fd7a:115c:a1e0::53 as the MagicDNS resolver instead of 100.100.100.100.
+
+        This is necessary if `DisableIPv4` is enabled in the Tailscale access controls.
+      '';
+    };
+
     overrideLocalDns = mkOption {
       type = types.bool;
       default = false;
@@ -33,15 +44,15 @@ in
           1. at least one DNS server is added
           2. `Override local DNS` is enabled
 
-        As this option sets 100.100.100.100 as your sole DNS server, if the requirements above are not met,
-        all non-MagicDNS queries WILL fail.
+        As this option sets 100.100.100.100 or fd7a:115c:a1e0::53 as your sole DNS server, if the
+        requirements above are not met, all non-MagicDNS queries WILL fail.
       '';
     };
   };
 
   config = mkIf cfg.enable {
     assertions = [{
-      assertion = !cfg.overrideLocalDns || config.networking.dns == [ "100.100.100.100" ];
+      assertion = !cfg.overrideLocalDns || config.networking.dns == [ "100.100.100.100" ] || config.networking.dns == [ "fd7a:115c:a1e0::53" ];
       message = ''
         DNS servers should be configured on the Tailscale control panel when `services.tailscale.overrideLocalDns` is enabled.
 
@@ -61,10 +72,12 @@ in
       };
     };
 
-    networking.dns = mkIf cfg.overrideLocalDns [ "100.100.100.100" ];
+    networking.dns = mkIf cfg.overrideLocalDns [ (if cfg.useIPv6 then "fd7a:115c:a1e0::53" else "100.100.100.100") ];
 
     # Ensures Tailscale MagicDNS always works even without adding 100.100.100.100 to DNS servers
-    environment.etc."resolver/ts.net".text = "nameserver 100.100.100.100";
+    environment.etc."resolver/ts.net".text = if cfg.useIPv6
+      then "nameserver fd7a:115c:a1e0::53"
+      else "nameserver 100.100.100.100";
 
     # This file gets created by tailscaled when `Override local DNS` is turned off
     environment.etc."resolver/ts.net".knownSha256Hashes = [
